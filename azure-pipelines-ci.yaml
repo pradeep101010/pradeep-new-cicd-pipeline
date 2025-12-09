@@ -1,3 +1,4 @@
+name: ci-$(Date:yyyyMMdd)-$(Rev:.r)
 trigger:
   branches:
     include:
@@ -10,22 +11,6 @@ pr:
       - main
       - develop
 
-variables:
-  # Service connection name (string variable in pipeline library or pipeline-level)
-  azureServiceConnection: '$(azureServiceConnection)'  # set in pipeline / variable group
-  # Environment: dev or prod - set at queue time or via branch->env mapping
-  environment: 'dev'
-
-  # Terraform variables (set these in pipeline variables or variable group)
-  resource_group_name: '$(resource_group_name)'
-  location: '$(location)'                 # e.g. eastus
-  app_service_plan_name: '$(app_service_plan_name)'
-  app_service_plan_tier: '$(app_service_plan_tier)'
-  app_service_plan_size: '$(app_service_plan_size)'
-  app_service_name: '$(app_service_name)'
-  linux_fx_version: '$(linux_fx_version)'
-  tags: '$(tags)'   # optional JSON string like {"env":"dev","owner":"team"}
-
 stages:
 - stage: Terraform_CI
   displayName: CI - Terraform
@@ -34,95 +19,93 @@ stages:
     displayName: Validate & Plan
     pool:
       vmImage: 'ubuntu-latest'
-    steps:
 
-    - task: HashiCorpInstall@0
-      displayName: 'Install Terraform'
+    variables:
+      environment: "dev"
+      TF_VAR_resource_group_name: "pradeep-rg"
+      TF_VAR_location: "eastus"
+      TF_VAR_app_service_plan_name: "pradeep-plan"
+      TF_VAR_app_service_plan_tier: "Standard"
+      TF_VAR_app_service_plan_size: "S1"
+      TF_VAR_app_service_name: "pradeep-app"
+      TF_VAR_linux_fx_version: "DOTNETCORE|7.0"
+
+    steps:
+    - task: TerraformInstaller@1
       inputs:
-        terraformVersion: '1.5.7'   # pick the version you need
+        terraformVersion: '1.5.7'
 
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '3.x'
-      displayName: 'Ensure Python (for jq install if needed)'
 
     - script: |
-        # export TF_VARs from pipeline variables so terraform picks them up
-        export TF_VAR_resource_group_name="${resource_group_name}"
-        export TF_VAR_location="${location}"
-        export TF_VAR_app_service_plan_name="${app_service_plan_name}"
-        export TF_VAR_app_service_plan_tier="${app_service_plan_tier}"
-        export TF_VAR_app_service_plan_size="${app_service_plan_size}"
-        export TF_VAR_app_service_name="${app_service_name}"
-        export TF_VAR_linux_fx_version="${linux_fx_version}"
+        echo 'tags = {"env":"dev","owner":"pradeep"}' > terraform/ci.tfvars
+      displayName: 'Create ci.tfvars'
 
-        # If tags is provided as JSON string, we write a simple tfvars file to capture it
-        if [ -n "${tags}" ]; then
-          echo "tags = ${tags}" > terraform/ci.tfvars
-        fi
-      displayName: 'Prepare TF_VARs'
-
-    - script: |
-        cd terraform
-        terraform init -input=false
-        terraform fmt -check || (terraform fmt && echo "Reformatted files")
-      displayName: 'terraform init & fmt'
-
-    # Authentication to Azure using the service connection (AzureCLI task)
     - task: AzureCLI@2
-      displayName: 'Authenticate to Azure (for provider if needed)'
       inputs:
-        azureSubscription: $(azureServiceConnection)
+        azureSubscription: 'pradeep-last-sc'
         scriptType: bash
         scriptLocation: inlineScript
-        inlineScript: |
-          # simply test auth
-          az account show
-      env:
-        AZURE_DEVOPS_EXT_TELEMETRY_OPTOUT: "1"
+        inlineScript: az account show
 
     - script: |
         set -euo pipefail
         cd terraform
 
-        # run terraform validate and capture JSON output
+        terraform init -input=false
+        terraform fmt -check || terraform fmt
+
         terraform validate -json > validate.json || true
 
-        # count errors and warnings
         ERR_COUNT=$(jq '[.diagnostics[] | select(.severity=="error")] | length' validate.json)
         WARN_COUNT=$(jq '[.diagnostics[] | select(.severity=="warning")] | length' validate.json)
 
         echo "Terraform validate: errors=${ERR_COUNT} warnings=${WARN_COUNT}"
 
-        if [ "$ERR_COUNT" -gt 0 ]; then
-          echo "Validation failed with errors"
-          cat validate.json
-          exit 1
-        fi
+        if [ "$ERR_COUNT" -gt 0 ]; then exit 1; fi
+        if [ "$(environment)" = "prod" ] && [ "$WARN_COUNT" -gt 0 ]; then exit 1; fi
 
-        if [ "${environment}" = "prod" ]; then
-          # strict: fail on any warnings in prod
-          if [ "$WARN_COUNT" -gt 0 ]; then
-            echo "Strict validation in prod: warnings are not allowed"
-            cat validate.json
-            exit 1
-          fi
-        else
-          echo "Non-prod environment: warnings allowed"
-        fi
-
-      displayName: 'terraform validate (env-specific behavior)'
+        echo "Validation complete"
+      displayName: 'terraform validate'
       env:
         TF_IN_AUTOMATION: "1"
+        TF_VAR_resource_group_name: $(TF_VAR_resource_group_name)
+        TF_VAR_location: $(TF_VAR_location)
+        TF_VAR_app_service_plan_name: $(TF_VAR_app_service_plan_name)
+        TF_VAR_app_service_plan_tier: $(TF_VAR_app_service_plan_tier)
+        TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
+        TF_VAR_app_service_name: $(TF_VAR_app_service_name)
+        TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
 
     - script: |
         cd terraform
-        terraform plan -input=false -out=tfplan.binary -var-file=ci.tfvars 2>&1 | tee plan.log
-        # convert binary plan to JSON for artifact publishing/inspection
+
+        terraform plan \
+          -input=false \
+          -out=tfplan.binary \
+          -var-file=ci.tfvars \
+          2>&1 | tee plan.log
+
         terraform show -json tfplan.binary > tfplan.json
-      displayName: 'terraform plan and produce JSON plan'
+      displayName: 'terraform plan'
       env:
         TF_IN_AUTOMATION: "1"
+        TF_VAR_resource_group_name: $(TF_VAR_resource_group_name)
+        TF_VAR_location: $(TF_VAR_location)
+        TF_VAR_app_service_plan_name: $(TF_VAR_app_service_plan_name)
+        TF_VAR_app_service_plan_tier: $(TF_VAR_app_service_plan_tier)
+        TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
+        TF_VAR_app_service_name: $(TF_VAR_app_service_name)
+        TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
+
+    ############################################
+    # PUBLISH ARTIFACTS INCLUDING FULL CONFIG #
+    ############################################
+
+    - publish: terraform
+      artifact: terraform        # Full folder including .tf files & lock file
 
     - publish: terraform/tfplan.binary
       artifact: tfplan

@@ -18,7 +18,7 @@ stages:
   - job: ValidateAndPlan
     displayName: Validate & Plan
     pool:
-      vmImage: 'pradeep-pool'
+      name: 'pradeep-pool'
 
     variables:
       environment: "dev"

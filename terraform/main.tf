@@ -10,7 +10,12 @@ terraform {
 
 provider "azurerm" {
   features {}
+
+  subscription_id = "145ccdc1-6c51-4e45-a04e-21bdea03d170"
+  tenant_id       = "2a731c61-a2b2-4661-8409-5b861cf40d0c"
+  use_msi          = true
 }
+
 
 # Resource Group
 resource "azurerm_resource_group" "rg" {

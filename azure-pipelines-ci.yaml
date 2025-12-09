@@ -36,6 +36,12 @@ stages:
     - script: |
         echo "Installing Terraform 1.5.7..."
         sudo apt-get update && sudo apt-get install -y unzip curl
+
+        # Clean up any previous Terraform files
+        rm -f terraform
+        rm -f terraform_1.5.7_linux_amd64.zip
+
+        # Download and extract only the binary
         curl -LO https://releases.hashicorp.com/terraform/1.5.7/terraform_1.5.7_linux_amd64.zip
         unzip -o -j terraform_1.5.7_linux_amd64.zip -d .
         sudo mv terraform /usr/local/bin/

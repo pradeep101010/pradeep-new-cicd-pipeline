@@ -21,7 +21,7 @@ stages:
       name: 'pradeep-pool'   # Use your self-hosted agent
     variables:
       environment: "dev"
-      TF_VAR_resource_group_name: "pradeep-rg"
+      TF_VAR_resource_group_name: "pradeep-auto-rg"
       TF_VAR_location: "eastus"
       TF_VAR_app_service_plan_name: "pradeep-plan"
       TF_VAR_app_service_plan_tier: "Standard"

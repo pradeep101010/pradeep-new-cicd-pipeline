@@ -18,8 +18,7 @@ stages:
   - job: ValidateAndPlan
     displayName: Validate & Plan
     pool:
-      name: 'pradeep-pool'
-
+      name: 'pradeep-pool'   # Use your self-hosted agent
     variables:
       environment: "dev"
       TF_VAR_resource_group_name: "pradeep-rg"
@@ -31,25 +30,45 @@ stages:
       TF_VAR_linux_fx_version: "DOTNETCORE|7.0"
 
     steps:
+    ############################################
+    # Install OS Dependencies for Terraform
+    ############################################
+    - task: CmdLine@2
+      displayName: 'Install required tools'
+      inputs:
+        script: |
+          sudo apt-get update
+          sudo apt-get install -y unzip jq
+
+    ############################################
+    # Install Terraform
+    ############################################
     - task: TerraformInstaller@1
+      displayName: 'Install Terraform'
       inputs:
         terraformVersion: '1.5.7'
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.x'
-
+    ############################################
+    # Create TFVARs file
+    ############################################
     - script: |
         echo 'tags = {"env":"dev","owner":"pradeep"}' > terraform/ci.tfvars
       displayName: 'Create ci.tfvars'
 
+    ############################################
+    # Azure login using Service Connection
+    ############################################
     - task: AzureCLI@2
+      displayName: 'Azure Login'
       inputs:
         azureSubscription: 'pradeep-last-sc'
         scriptType: bash
         scriptLocation: inlineScript
         inlineScript: az account show
 
+    ############################################
+    # Terraform Validate
+    ############################################
     - script: |
         set -euo pipefail
         cd terraform
@@ -79,6 +98,9 @@ stages:
         TF_VAR_app_service_name: $(TF_VAR_app_service_name)
         TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
 
+    ############################################
+    # Terraform Plan
+    ############################################
     - script: |
         cd terraform
 
@@ -101,9 +123,8 @@ stages:
         TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
 
     ############################################
-    # PUBLISH ARTIFACTS INCLUDING FULL CONFIG #
+    # Publish artifacts
     ############################################
-
     - publish: terraform
       artifact: terraform        # Full folder including .tf files & lock file
 

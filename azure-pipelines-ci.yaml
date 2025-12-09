@@ -18,9 +18,19 @@ stages:
     displayName: Validate & Plan
     pool:
       vmImage: 'ubuntu-latest'
+
+    variables:
+      environment: "dev"
+      TF_VAR_resource_group_name: "pradeep-rg"
+      TF_VAR_location: "eastus"
+      TF_VAR_app_service_plan_name: "pradeep-plan"
+      TF_VAR_app_service_plan_tier: "Standard"
+      TF_VAR_app_service_plan_size: "S1"
+      TF_VAR_app_service_name: "pradeep-app"
+      TF_VAR_linux_fx_version: "DOTNETCORE|7.0"
+
     steps:
 
-    # Install Terraform using marketplace task
     - task: TerraformInstaller@1
       displayName: 'Install Terraform 1.5.7'
       inputs:
@@ -32,18 +42,8 @@ stages:
       displayName: 'Ensure Python (for jq if needed)'
 
     - script: |
-        # Hardcoded variables
-        export environment="dev"
-        export TF_VAR_resource_group_name="pradeep-rg"
-        export TF_VAR_location="eastus"
-        export TF_VAR_app_service_plan_name="pradeep-plan"
-        export TF_VAR_app_service_plan_tier="Standard"
-        export TF_VAR_app_service_plan_size="S1"
-        export TF_VAR_app_service_name="pradeep-app"
-        export TF_VAR_linux_fx_version="DOTNETCORE|7.0"
-
         echo 'tags = {"env":"dev","owner":"pradeep"}' > terraform/ci.tfvars
-      displayName: 'Prepare TF_VARs'
+      displayName: 'Create ci.tfvars'
 
     - task: AzureCLI@2
       displayName: 'Authenticate to Azure'
@@ -64,6 +64,7 @@ stages:
         terraform fmt -check || (terraform fmt && echo "Reformatted files")
 
         terraform validate -json > validate.json || true
+
         ERR_COUNT=$(jq '[.diagnostics[] | select(.severity=="error")] | length' validate.json)
         WARN_COUNT=$(jq '[.diagnostics[] | select(.severity=="warning")] | length' validate.json)
 
@@ -74,7 +75,7 @@ stages:
           exit 1
         fi
 
-        if [ "$environment" = "prod" ] && [ "$WARN_COUNT" -gt 0 ]; then
+        if [ "$(environment)" = "prod" ] && [ "$WARN_COUNT" -gt 0 ]; then
           echo "Strict validation in prod: warnings are not allowed"
           cat validate.json
           exit 1

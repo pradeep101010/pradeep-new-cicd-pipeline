@@ -48,8 +48,7 @@ stages:
         azureSubscription: 'pradeep-last-sc'
         scriptType: bash
         scriptLocation: inlineScript
-        inlineScript: |
-          az account show
+        inlineScript: az account show
 
     - script: |
         set -euo pipefail
@@ -100,6 +99,13 @@ stages:
         TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
         TF_VAR_app_service_name: $(TF_VAR_app_service_name)
         TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
+
+    ############################################
+    # PUBLISH ARTIFACTS INCLUDING FULL CONFIG #
+    ############################################
+
+    - publish: terraform
+      artifact: terraform        # Full folder including .tf files & lock file
 
     - publish: terraform/tfplan.binary
       artifact: tfplan

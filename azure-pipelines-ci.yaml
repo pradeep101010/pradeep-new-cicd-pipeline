@@ -49,22 +49,23 @@ stages:
         terraformVersion: '1.5.7'
 
     ############################################
+    # Set Managed Identity Environment Variables
+    ############################################
+    - script: |
+        echo "Setting Terraform Azure MSI environment variables..."
+        export ARM_USE_MSI=true
+        export ARM_MSI_CLIENT_ID=eca641d4-4893-44d1-9958-99febd55485b
+        export ARM_SUBSCRIPTION_ID=145ccdc1-6c51-4e45-a04e-21bdea03d170
+        export ARM_TENANT_ID=2a731c61-a2b2-4661-8409-5b861cf40d0c
+        env | grep ARM_
+      displayName: 'Set Terraform MSI environment variables'
+
+    ############################################
     # Create TFVARs file
     ############################################
     - script: |
         echo 'tags = {"env":"dev","owner":"pradeep"}' > terraform/ci.tfvars
       displayName: 'Create ci.tfvars'
-
-    ############################################
-    # Azure login using Service Connection
-    ############################################
-    - task: AzureCLI@2
-      displayName: 'Azure Login'
-      inputs:
-        azureSubscription: 'pradeep-last-sc'
-        scriptType: bash
-        scriptLocation: inlineScript
-        inlineScript: az account show
 
     ############################################
     # Terraform Validate
@@ -97,6 +98,10 @@ stages:
         TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
         TF_VAR_app_service_name: $(TF_VAR_app_service_name)
         TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
+        ARM_USE_MSI: true
+        ARM_MSI_CLIENT_ID: eca641d4-4893-44d1-9958-99febd55485b
+        ARM_SUBSCRIPTION_ID: 145ccdc1-6c51-4e45-a04e-21bdea03d170
+        ARM_TENANT_ID: 2a731c61-a2b2-4661-8409-5b861cf40d0c
 
     ############################################
     # Terraform Plan
@@ -121,12 +126,16 @@ stages:
         TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
         TF_VAR_app_service_name: $(TF_VAR_app_service_name)
         TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
+        ARM_USE_MSI: true
+        ARM_MSI_CLIENT_ID: eca641d4-4893-44d1-9958-99febd55485b
+        ARM_SUBSCRIPTION_ID: 145ccdc1-6c51-4e45-a04e-21bdea03d170
+        ARM_TENANT_ID: 2a731c61-a2b2-4661-8409-5b861cf40d0c
 
     ############################################
     # Publish artifacts
     ############################################
     - publish: terraform
-      artifact: terraform        # Full folder including .tf files & lock file
+      artifact: terraform
 
     - publish: terraform/tfplan.binary
       artifact: tfplan

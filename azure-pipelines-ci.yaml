@@ -1,5 +1,4 @@
 name: ci-$(Date:yyyyMMdd)-$(Rev:.r)
-
 trigger:
   branches:
     include:
@@ -73,6 +72,13 @@ stages:
       displayName: 'terraform validate'
       env:
         TF_IN_AUTOMATION: "1"
+        TF_VAR_resource_group_name: $(TF_VAR_resource_group_name)
+        TF_VAR_location: $(TF_VAR_location)
+        TF_VAR_app_service_plan_name: $(TF_VAR_app_service_plan_name)
+        TF_VAR_app_service_plan_tier: $(TF_VAR_app_service_plan_tier)
+        TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
+        TF_VAR_app_service_name: $(TF_VAR_app_service_name)
+        TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
 
     - script: |
         cd terraform
@@ -87,8 +93,14 @@ stages:
       displayName: 'terraform plan'
       env:
         TF_IN_AUTOMATION: "1"
+        TF_VAR_resource_group_name: $(TF_VAR_resource_group_name)
+        TF_VAR_location: $(TF_VAR_location)
+        TF_VAR_app_service_plan_name: $(TF_VAR_app_service_plan_name)
+        TF_VAR_app_service_plan_tier: $(TF_VAR_app_service_plan_tier)
+        TF_VAR_app_service_plan_size: $(TF_VAR_app_service_plan_size)
+        TF_VAR_app_service_name: $(TF_VAR_app_service_name)
+        TF_VAR_linux_fx_version: $(TF_VAR_linux_fx_version)
 
-    # --- PUBLISH ARTIFACTS ---
     - publish: terraform/tfplan.binary
       artifact: tfplan
 

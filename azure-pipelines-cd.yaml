@@ -1,0 +1,79 @@
+trigger: none
+pr: none
+
+variables:
+  azureServiceConnection: '$(azureServiceConnection)'
+  environment: '$(environment)'  # dev or prod, set when queueing the pipeline
+  resource_group_name: '$(resource_group_name)'  # same TF vars as CI
+  location: '$(location)'
+  app_service_plan_name: '$(app_service_plan_name)'
+  app_service_plan_tier: '$(app_service_plan_tier)'
+  app_service_plan_size: '$(app_service_plan_size)'
+  app_service_name: '$(app_service_name)'
+  linux_fx_version: '$(linux_fx_version)'
+  tags: '$(tags)'
+
+stages:
+- stage: Deploy
+  displayName: CD - Deploy Terraform Plan
+  jobs:
+  - deployment: ApplyPlan
+    displayName: Apply Terraform Plan
+    environment: '$(environment)-env'   # create this environment in ADO and add approvers
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+
+          - task: HashiCorpInstall@0
+            displayName: 'Install Terraform'
+            inputs:
+              terraformVersion: '1.5.7'
+
+          - task: AzureCLI@2
+            displayName: 'Authenticate to Azure'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                echo "Logged into Azure subscription:"
+                az account show
+
+          - download: current
+            artifact: tfplan
+            displayName: 'Download tfplan artifact (binary)'
+
+          - download: current
+            artifact: tfplan_json
+            displayName: 'Download tfplan JSON (readable)'
+
+          - script: |
+              # export TF_VARs again for apply-time
+              export TF_VAR_resource_group_name="${resource_group_name}"
+              export TF_VAR_location="${location}"
+              export TF_VAR_app_service_plan_name="${app_service_plan_name}"
+              export TF_VAR_app_service_plan_tier="${app_service_plan_tier}"
+              export TF_VAR_app_service_plan_size="${app_service_plan_size}"
+              export TF_VAR_app_service_name="${app_service_name}"
+              export TF_VAR_linux_fx_version="${linux_fx_version}"
+
+              if [ -n "${tags}" ]; then
+                echo "tags = ${tags}" > terraform/ci.tfvars
+              fi
+
+              # Show the plan summary (human-readable)
+              echo "Plan JSON preview:"
+              jq '.resource_changes[]? | {type:.type, name:.name, action:.change.actions}' terraform/tfplan.json || true
+            displayName: 'Prepare TF_VARs and preview plan'
+
+          - script: |
+              # apply the binary plan (non-interactive)
+              cd terraform
+              terraform init -input=false
+              terraform apply -input=false tfplan.binary
+            displayName: 'terraform apply'
+            env:
+              TF_IN_AUTOMATION: "1"

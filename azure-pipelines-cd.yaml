@@ -1,77 +1,73 @@
 trigger: none
 pr: none
 
-variables:
-  azureServiceConnection: '$(azureServiceConnection)'
-  environment: '$(environment)'  # dev or prod, set when queueing the pipeline
-  resource_group_name: '$(resource_group_name)'  # same TF vars as CI
-  location: '$(location)'
-  app_service_plan_name: '$(app_service_plan_name)'
-  app_service_plan_tier: '$(app_service_plan_tier)'
-  app_service_plan_size: '$(app_service_plan_size)'
-  app_service_name: '$(app_service_name)'
-  linux_fx_version: '$(linux_fx_version)'
-  tags: '$(tags)'
-
 stages:
 - stage: Deploy
   displayName: CD - Deploy Terraform Plan
+
   jobs:
   - deployment: ApplyPlan
     displayName: Apply Terraform Plan
-    environment: '$(environment)-env'   # create this environment in ADO and add approvers
+    environment: 'dev-env'
     pool:
       vmImage: 'ubuntu-latest'
+
     strategy:
       runOnce:
         deploy:
           steps:
 
-          - task: HashiCorpInstall@0
+          # Use same Terraform installer as CI
+          - task: TerraformInstaller@1
             displayName: 'Install Terraform'
             inputs:
               terraformVersion: '1.5.7'
 
+          # Login to Azure
           - task: AzureCLI@2
             displayName: 'Authenticate to Azure'
             inputs:
-              azureSubscription: $(azureServiceConnection)
+              azureSubscription: 'pradeep-last-sc'
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
                 echo "Logged into Azure subscription:"
                 az account show
 
+          # Download artifacts from CI
           - download: current
             artifact: tfplan
             displayName: 'Download tfplan artifact (binary)'
 
           - download: current
             artifact: tfplan_json
-            displayName: 'Download tfplan JSON (readable)'
+            displayName: 'Download tfplan JSON (human-readable)'
 
+          # Re-export TF_VARs
           - script: |
-              # export TF_VARs again for apply-time
-              export TF_VAR_resource_group_name="${resource_group_name}"
-              export TF_VAR_location="${location}"
-              export TF_VAR_app_service_plan_name="${app_service_plan_name}"
-              export TF_VAR_app_service_plan_tier="${app_service_plan_tier}"
-              export TF_VAR_app_service_plan_size="${app_service_plan_size}"
-              export TF_VAR_app_service_name="${app_service_name}"
-              export TF_VAR_linux_fx_version="${linux_fx_version}"
+              echo "Exporting TF_VARs..."
 
-              if [ -n "${tags}" ]; then
-                echo "tags = ${tags}" > terraform/ci.tfvars
-              fi
+              export TF_VAR_resource_group_name="pradeep-rg"
+              export TF_VAR_location="eastus"
+              export TF_VAR_app_service_plan_name="pradeep-plan"
+              export TF_VAR_app_service_plan_tier="Standard"
+              export TF_VAR_app_service_plan_size="S1"
+              export TF_VAR_app_service_name="pradeep-app"
+              export TF_VAR_linux_fx_version="DOTNETCORE|7.0"
 
-              # Show the plan summary (human-readable)
-              echo "Plan JSON preview:"
-              jq '.resource_changes[]? | {type:.type, name:.name, action:.change.actions}' terraform/tfplan.json || true
+              echo 'tags = {"env":"dev","owner":"pradeep"}' \
+                > $(Pipeline.Workspace)/tfplan/ci.tfvars
+
+              echo "Plan preview:"
+              jq '.resource_changes[]? | {type:.type, name:.name, action:.change.actions}' \
+                $(Pipeline.Workspace)/tfplan_json/tfplan.json || true
             displayName: 'Prepare TF_VARs and preview plan'
 
+          # Apply Terraform plan
           - script: |
-              # apply the binary plan (non-interactive)
-              cd terraform
+              echo "Applying Terraform plan..."
+              cd $(Pipeline.Workspace)/tfplan
+
               terraform init -input=false
               terraform apply -input=false tfplan.binary
             displayName: 'terraform apply'
